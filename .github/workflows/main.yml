@@ -1,0 +1,54 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Bandit SAST Scan
+      run: |
+        pip install bandit
+        bandit -r . -f json -o bandit-results.json
+        
+        # Check for critical findings
+        if grep -q '"issue_confidence": "HIGH"' bandit-results.json; then
+          echo "::error::High severity security issues found by Bandit"
+          exit 1
+        fi
+
+    - name: Semgrep SAST Scan
+      uses: returntocorp/semgrep-action@v1
+      with:
+        config: p/ci
+
+    - name: Detect Secrets
+      uses: gitleaks/gitleaks-action@v2
+      with:
+        config-path: .gitleaks.toml
+        redact: true
+
+    - name: Dependency Scan
+      run: |
+        pip install safety
+        safety check --full-report
+
+    - name: Upload Bandit Results
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: bandit-results
+        path: bandit-results.json
